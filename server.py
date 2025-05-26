@@ -8,6 +8,7 @@ import socket
 import json
 import threading
 import random
+import time
 from typing import Dict, List, Optional
 
 class VotingServer:
@@ -24,6 +25,34 @@ class VotingServer:
         self.first_client_id = None
         self.used_ids = set()
         self.voting_active = True
+        self.server_running = True
+        self.results_requested = False
+        
+        # Thread-safe shutdown event
+        self.shutdown_event = threading.Event()
+        
+    def shutdown(self):
+        """Gracefully shutdown the server"""
+        print("\nServer: Initiating shutdown...")
+        self.server_running = False
+        self.voting_active = False
+        self.shutdown_event.set()
+        
+        # Close all client connections
+        for client_id, conn in list(self.clients.items()):
+            try:
+                conn.close()
+            except:
+                pass
+        self.clients.clear()
+        
+        # Close server socket
+        try:
+            self.socket.close()
+        except:
+            pass
+            
+        print("Server: Shutdown complete")
         
     def generate_client_id(self) -> str:
         """Generate random client ID"""
@@ -36,10 +65,12 @@ class VotingServer:
     
     def handle_client(self, conn, addr):
         """Handle individual client connection"""
-        # Assign client ID
-        client_id = self.generate_client_id()
-    
-        try:            
+        client_id = None
+        
+        try:
+            # Assign client ID
+            client_id = self.generate_client_id()
+            
             # Send client ID
             response = {'type': 'client_id', 'client_id': client_id}
             conn.send((json.dumps(response) + '\n').encode())
@@ -72,35 +103,57 @@ class VotingServer:
                     print(f"Server: Sent shared public key to {client_id}")
             
             # Handle voting
-            while self.voting_active:
-                data = conn.recv(4096).decode().strip()
-                if not data:
+            while not self.shutdown_event.is_set() and self.voting_active:
+                try:
+                    conn.settimeout(0.5)  # Short timeout to check shutdown frequently
+                    data = conn.recv(4096).decode().strip()
+                    if not data:
+                        break
+                        
+                    msg = json.loads(data)
+                    
+                    if msg['type'] == 'vote':
+                        encrypted_vote = msg['encrypted_vote']
+                        self.encrypted_votes.append(encrypted_vote)
+                        print(f"Server: Received vote from {client_id}: {encrypted_vote}")
+                        
+                        # Send confirmation
+                        response = {'type': 'vote_received'}
+                        conn.send((json.dumps(response) + '\n').encode())
+                    
+                    elif msg['type'] == 'get_results':
+                        # Calculate encrypted sum
+                        encrypted_sum = self.calculate_encrypted_sum()
+                        response = {'type': 'encrypted_sum', 'encrypted_sum': encrypted_sum}
+                        conn.send((json.dumps(response) + '\n').encode())
+                        print(f"Server: Sent encrypted sum to {client_id} for decryption")
+                        
+                        # Mark that results were requested - voting round complete
+                        self.results_requested = True
+                        self.voting_active = False
+                        print("Server: Results requested - voting round complete")
+                        print("Server: Voting session ended. Press Ctrl+C to exit.")
+                        break
+                        
+                except socket.timeout:
+                    # Check if we should continue
+                    continue
+                except Exception as e:
+                    if not self.shutdown_event.is_set():
+                        print(f"Server: Error in client loop for {client_id}: {e}")
                     break
                     
-                msg = json.loads(data)
-                
-                if msg['type'] == 'vote':
-                    encrypted_vote = msg['encrypted_vote']
-                    self.encrypted_votes.append(encrypted_vote)
-                    print(f"Server: Received vote from {client_id}: {encrypted_vote}")
-                    
-                    # Send confirmation
-                    response = {'type': 'vote_received'}
-                    conn.send((json.dumps(response) + '\n').encode())
-                
-                elif msg['type'] == 'get_results':
-                    # Calculate encrypted sum
-                    encrypted_sum = self.calculate_encrypted_sum()
-                    response = {'type': 'encrypted_sum', 'encrypted_sum': encrypted_sum}
-                    conn.send((json.dumps(response) + '\n').encode())
-                    print(f"Server: Sent encrypted sum to {client_id} for decryption")
-                    
         except Exception as e:
-            print(f"Server: Error handling client {client_id}: {e}")
+            if not self.shutdown_event.is_set():
+                print(f"Server: Error handling client {client_id}: {e}")
         finally:
-            conn.close()
-            if client_id in self.clients:
+            try:
+                conn.close()
+            except:
+                pass
+            if client_id and client_id in self.clients:
                 del self.clients[client_id]
+                print(f"Server: Client {client_id} disconnected")
     
     def calculate_encrypted_sum(self) -> int:
         """Calculate homomorphic sum of all encrypted votes"""
@@ -120,24 +173,114 @@ class VotingServer:
         print(f"Server: Calculated encrypted sum from {len(self.encrypted_votes)} votes: {encrypted_sum}")
         return encrypted_sum
     
+    def monitor_input(self):
+        """Monitor for user input to shutdown server"""
+        print("Server: Type 'quit' or 'exit' to stop the server, or press Ctrl+C")
+        try:
+            while not self.shutdown_event.is_set():
+                try:
+                    # Check if there's input available (non-blocking)
+                    import select
+                    import sys
+                    
+                    if select.select([sys.stdin], [], [], 0.5)[0]:
+                        user_input = input().strip().lower()
+                        if user_input in ['quit', 'exit', 'stop']:
+                            print("Server: User requested shutdown")
+                            self.shutdown()
+                            break
+                    
+                    # If voting is complete, auto-shutdown
+                    if self.results_requested:
+                        print("Server: Voting complete. Auto-shutting down.")
+                        self.shutdown()
+                        break
+                        
+                except:
+                    # select might not be available on all systems
+                    time.sleep(1)
+                    if self.results_requested:
+                        print("Server: Voting complete. Auto-shutting down")
+                        time.sleep(1)
+                        self.shutdown()
+                        break
+                        
+        except KeyboardInterrupt:
+            print("\nServer: Keyboard interrupt received")
+            self.shutdown()
+    
     def start(self):
         """Start the server"""
-        self.socket.bind((self.host, self.port))
-        self.socket.listen(10)
-        print(f"Server: Listening on {self.host}:{self.port}")
-        print("Server: Waiting for clients...")
-        
         try:
-            while True:
-                conn, addr = self.socket.accept()
-                client_thread = threading.Thread(target=self.handle_client, args=(conn, addr))
-                client_thread.daemon = True
-                client_thread.start()
-        except KeyboardInterrupt:
-            print("\nServer: Shutting down...")
+            self.socket.bind((self.host, self.port))
+            self.socket.listen(10)
+            print(f"Server: Listening on {self.host}:{self.port}")
+            
+            # Start input monitoring thread
+            input_thread = threading.Thread(target=self.monitor_input)
+            input_thread.daemon = True
+            input_thread.start()
+            
+            print("Server: Waiting for clients...")
+            
+            while not self.shutdown_event.is_set():
+                try:
+                    # Use select to make accept non-blocking
+                    import select
+                    ready, _, _ = select.select([self.socket], [], [], 1.0)
+                    
+                    if ready and not self.shutdown_event.is_set():
+                        conn, addr = self.socket.accept()
+                        
+                        if self.shutdown_event.is_set():
+                            conn.close()
+                            break
+                            
+                        # If results were already requested, don't accept new clients
+                        if self.results_requested:
+                            print("Server: Voting round complete, rejecting new client")
+                            try:
+                                reject_msg = {'type': 'error', 'message': 'Voting session has ended'}
+                                conn.send((json.dumps(reject_msg) + '\n').encode())
+                            except:
+                                pass
+                            conn.close()
+                            continue
+                            
+                        client_thread = threading.Thread(target=self.handle_client, args=(conn, addr))
+                        client_thread.daemon = True
+                        client_thread.start()
+                        
+                except Exception as e:
+                    if not self.shutdown_event.is_set():
+                        print(f"Server: Error accepting connections: {e}")
+                        break
+                        
+        except Exception as e:
+            print(f"Server: Failed to start: {e}")
         finally:
-            self.socket.close()
+            self.shutdown()
+
+def main():
+    """Main function with better error handling"""
+    print("=" * 50)
+    print("  Homomorphic Voting Server")
+    print("=" * 50)
+    print("Commands:")
+    print("  - Type 'quit', 'exit', or 'stop' to shutdown")
+    print("  - Press Ctrl+C for immediate shutdown")
+    print("  - Server auto-shuts down after voting completes")
+    print("=" * 50)
+    
+    server = VotingServer()
+    try:
+        server.start()
+    except KeyboardInterrupt:
+        print("\nServer: Keyboard interrupt received")
+        server.shutdown()
+    except Exception as e:
+        print(f"Server: Unexpected error: {e}")
+        server.shutdown()
 
 if __name__ == "__main__":
-    server = VotingServer()
-    server.start()
+    main()
