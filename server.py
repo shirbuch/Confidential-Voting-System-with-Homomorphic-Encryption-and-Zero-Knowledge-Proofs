@@ -11,6 +11,8 @@ import random
 import time
 from typing import Dict, List, Optional
 
+from crypto_wrapper import calculate_encrypted_sum
+
 class VotingServer:
     def __init__(self, host='localhost', port=8888):
         self.host = host
@@ -123,7 +125,10 @@ class VotingServer:
                     
                     elif msg['type'] == 'get_results':
                         # Calculate encrypted sum
-                        encrypted_sum = self.calculate_encrypted_sum()
+                        if not self.shared_public_key:
+                            return 0
+                        encrypted_sum = calculate_encrypted_sum(self.encrypted_votes, self.shared_public_key)
+                        print(f"Server: Calculated encrypted sum from {len(self.encrypted_votes)} votes: {encrypted_sum}")
                         response = {'type': 'encrypted_sum', 'encrypted_sum': encrypted_sum}
                         conn.send((json.dumps(response) + '\n').encode())
                         print(f"Server: Sent encrypted sum to {client_id} for decryption")
@@ -175,36 +180,14 @@ class VotingServer:
     
     def monitor_input(self):
         """Monitor for user input to shutdown server"""
-        print("Server: Type 'quit' or 'exit' to stop the server, or press Ctrl+C")
+        print("Server: to stop the server, press Ctrl+C")
         try:
             while not self.shutdown_event.is_set():
-                try:
-                    # Check if there's input available (non-blocking)
-                    import select
-                    import sys
-                    
-                    if select.select([sys.stdin], [], [], 0.5)[0]:
-                        user_input = input().strip().lower()
-                        if user_input in ['quit', 'exit', 'stop']:
-                            print("Server: User requested shutdown")
-                            self.shutdown()
-                            break
-                    
-                    # If voting is complete, auto-shutdown
-                    if self.results_requested:
-                        print("Server: Voting complete. Auto-shutting down.")
-                        self.shutdown()
-                        break
-                        
-                except:
-                    # select might not be available on all systems
-                    time.sleep(1)
-                    if self.results_requested:
-                        print("Server: Voting complete. Auto-shutting down")
-                        time.sleep(1)
-                        self.shutdown()
-                        break
-                        
+                # If voting is complete, auto-shutdown
+                if self.results_requested:
+                    print("Server: Voting complete. Auto-shutting down.")
+                    self.shutdown()
+                    break           
         except KeyboardInterrupt:
             print("\nServer: Keyboard interrupt received")
             self.shutdown()
@@ -259,7 +242,8 @@ class VotingServer:
         except Exception as e:
             print(f"Server: Failed to start: {e}")
         finally:
-            self.shutdown()
+            if self.shutdown_event.is_set():
+                print("Server: Shutdown event set, exiting main loop")
 
 def main():
     """Main function with better error handling"""

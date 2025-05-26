@@ -7,61 +7,10 @@ Usage: python client.py [yes|no]
 
 import socket
 import json
-import math
-import random
 import sys
-from typing import Tuple, Optional
+from typing import Tuple
 
-def generate_random_prime(min_val=50, max_val=100):
-    """Generate a random prime number in given range"""
-    def is_prime(n):
-        if n < 2:
-            return False
-        for i in range(2, int(math.sqrt(n)) + 1):
-            if n % i == 0:
-                return False
-        return True
-    
-    while True:
-        candidate = random.randint(min_val, max_val)
-        if is_prime(candidate):
-            return candidate
-
-class PaillierContext:
-    """Paillier cryptosystem context"""
-    
-    def __init__(self):
-        """Generate prime numbers"""
-        self.p = generate_random_prime(50, 80)
-        self.q = generate_random_prime(50, 80)
-        
-        # Ensure p != q
-        while self.p == self.q:
-            self.q = generate_random_prime(50, 80)
-            
-        self.n = self.p * self.q
-        self.phi = (self.p - 1) * (self.q - 1)
-        
-        # Simplified variant parameters
-        self.g = self.n + 1
-        self.lmbda = self.phi
-        self.mu = pow(self.lmbda, -1, self.n)
-        
-    def get_public_key(self) -> Tuple[int, int]:
-        """Return public key (g, n)"""
-        return (self.g, self.n)
-    
-    def decrypt(self, c: int) -> int:
-        """Decrypt ciphertext c"""
-        cl = pow(c, self.lmbda, self.n * self.n)
-        l = int(cl - 1) / int(self.n)
-        p = int((l * self.mu) % self.n)
-        
-        # Handle negative values (convert from modular arithmetic)
-        if p > self.n // 2:
-            p = p - self.n
-            
-        return p
+from crypto_wrapper import *
 
 class VotingClient:
     def __init__(self, server_host='localhost', server_port=8888):
@@ -127,16 +76,6 @@ class VotingClient:
             print(f"Client: Connection error: {e}")
             return False
     
-    def encrypt_vote(self, vote_value: int, public_key: Tuple[int, int]) -> int:
-        """Encrypt vote using given public key"""
-        g, n = public_key
-        r = random.randint(1, n - 1)
-        while math.gcd(r, n) != 1:
-            r = random.randint(1, n - 1)
-        
-        encrypted_vote = (pow(g, vote_value, n * n) * pow(r, n, n * n)) % (n * n)
-        return encrypted_vote
-    
     def cast_vote(self, vote: str):
         """Cast vote (YES=1, NO=-1)"""
         vote_value = 1 if vote.lower() == 'yes' else -1
@@ -146,7 +85,7 @@ class VotingClient:
             return False
         
         # Encrypt vote
-        encrypted_vote = self.encrypt_vote(vote_value, self.shared_public_key)
+        encrypted_vote = encrypt_vote(vote_value, self.shared_public_key)
         print(f"Client {self.client_id}: Vote '{vote}' (value={vote_value}) -> encrypted as {encrypted_vote}")
         
         # Send vote to server
