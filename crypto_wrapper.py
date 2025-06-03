@@ -1,4 +1,3 @@
-
 import math
 import random
 from typing import Tuple
@@ -56,15 +55,17 @@ class PaillierContext:
             
         return p
 
-def encrypt_vote(vote_value: int, public_key: Tuple[int, int]) -> int:
-    """Encrypt vote using given public key"""
+
+def encrypt_vote(vote_value: int, public_key: Tuple[int, int]) -> Tuple[int, int]:
+    """Encrypt vote using given public key, return ciphertext and random r"""
     g, n = public_key
     r = random.randint(1, n - 1)
     while math.gcd(r, n) != 1:
         r = random.randint(1, n - 1)
     
     encrypted_vote = (pow(g, vote_value, n * n) * pow(r, n, n * n)) % (n * n)
-    return encrypted_vote
+    return encrypted_vote, r
+
 
 def calculate_encrypted_sum(encrypted_values: list, public_key: Tuple[int, int]) -> int:
     """Calculate homomorphic sum of all encrypted votes"""

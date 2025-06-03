@@ -85,7 +85,11 @@ class VotingClient:
             return False
         
         # Encrypt vote
-        encrypted_vote = encrypt_vote(vote_value, self.shared_public_key)
+        encrypted_vote, r = encrypt_vote(vote_value, self.shared_public_key)
+        self.last_vote_info = {
+            'm': vote_value,
+            'r': r
+        }
         print(f"Client {self.client_id}: Vote '{vote}' (value={vote_value}) -> encrypted as {encrypted_vote}")
         
         # Send vote to server
