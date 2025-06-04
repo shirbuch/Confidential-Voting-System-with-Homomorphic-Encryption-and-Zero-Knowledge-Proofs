@@ -12,6 +12,7 @@ import time
 from typing import Dict, List, Optional
 
 from crypto_wrapper import calculate_encrypted_sum
+import crypto_wrapper
 
 class VotingServer:
     def __init__(self, host='localhost', port=8888):
@@ -154,11 +155,9 @@ class VotingServer:
                             print(f"Server: No active ZKP challenge for {client_id}")
                             return
 
-                        g, N = self.shared_public_key
-                        N2 = N * N
-                        lhs = (pow(g, v, N2) * pow(w, N, N2) * pow(c, challenge, N2)) % N2
-
-                        if lhs == u:
+                        # Verify ZKP response
+                        verified = crypto_wrapper.verify_zkp_response(u, v, w, challenge, c, self.shared_public_key)
+                        if verified:
                             print(f"Server: ZKP verification PASSED for client {client_id}")
                         else:
                             print(f"Server: ZKP verification FAILED for client {client_id}")

@@ -82,10 +82,8 @@ def calculate_encrypted_sum(encrypted_values: list, public_key: Tuple[int, int])
     return encrypted_sum
 
 
-def generate_zkp_proof(m: int, r: int, public_key: Tuple[int, int], e: int) -> Tuple[int, int, int]:
-    """
-    Generate a zero-knowledge proof (u, v, w) for vote m encrypted with Paillier.
-    """
+def generate_zkp_challange_response(m: int, r: int, public_key: Tuple[int, int], e: int) -> Tuple[int, int, int]:
+    """Generate a zero-knowledge proof (u, v, w) for vote m encrypted with Paillier."""
     g, N = public_key
     N2 = N * N
     x = random.randint(1, N - 1)
@@ -96,3 +94,11 @@ def generate_zkp_proof(m: int, r: int, public_key: Tuple[int, int], e: int) -> T
     w = (s * pow(r, -e, N)) % N
     
     return u, v, w
+
+def verify_zkp_response(u: int, v: int, w: int, e: int, c, public_key: Tuple[int, int]) -> bool:
+    """Verify zero-knowledge proof response (u, v, w) against challenge e."""
+    g, N = public_key
+    N2 = N * N
+    lhs = (pow(g, v, N2) * pow(w, N, N2) * pow(c, e, N2)) % N2
+    
+    return lhs == u

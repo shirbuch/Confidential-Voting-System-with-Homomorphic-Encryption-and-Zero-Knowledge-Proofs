@@ -13,7 +13,7 @@ from typing import Tuple
 
 from crypto_wrapper import *
 
-class VotingClient:
+class Client:
     def __init__(self, server_host='localhost', server_port=8888):
         self.server_host = server_host
         self.server_port = server_port
@@ -120,7 +120,7 @@ class VotingClient:
         r = self.last_vote_info['r']
         g, N = self.shared_public_key
 
-        u, v, w = generate_zkp_proof(m, r, (g, N), e)
+        u, v, w = generate_zkp_challange_response(m, r, (g, N), e)
 
         msg = {
             'type': 'zkp_response',
@@ -187,7 +187,7 @@ def main():
     
     vote = sys.argv[1]
     
-    client = VotingClient()
+    client = Client()
     
     if client.connect():
         print(f"Client: Connected successfully")
