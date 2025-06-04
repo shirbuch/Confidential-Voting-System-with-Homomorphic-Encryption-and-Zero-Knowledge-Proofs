@@ -5,6 +5,7 @@ Each client generates own keys, votes using shared public key
 Usage: python client.py [yes|no]
 """
 
+from calendar import c
 import socket
 import json
 import sys
@@ -100,11 +101,37 @@ class VotingClient:
         data = self.socket.recv(4096).decode().strip()
         msg = json.loads(data)
         if msg['type'] == 'vote_received':
-            print(f"Client {self.client_id}: Vote confirmed by server")
+            print(f"Client {self.client_id}: Vote recieved by server")
             return True
         
         return False
-    
+
+    def respond_to_zkp_challenge(self, e: int):
+        """Respond to a ZKP challenge using stored vote"""
+        if not hasattr(self, 'last_vote_info') or not self.last_vote_info:
+            print(f"Client {self.client_id}: No vote information available for ZKP")
+            return
+
+        if not self.shared_public_key:
+            print(f"Client {self.client_id}: No shared public key available for ZKP")
+            return
+        
+        m = self.last_vote_info['m']
+        r = self.last_vote_info['r']
+        g, N = self.shared_public_key
+
+        u, v, w = generate_zkp_proof(m, r, (g, N), e)
+
+        msg = {
+            'type': 'zkp_response',
+            'client_id': self.client_id,
+            'u': u,
+            'v': v,
+            'w': w
+        }
+        self.socket.send((json.dumps(msg) + '\n').encode())
+        print(f"Client {self.client_id}: Sent ZKP response")
+
     def get_results(self):
         """Request and decrypt final results (first client only)"""
         if not self.is_first_client:
@@ -134,6 +161,21 @@ class VotingClient:
         print(f"Client {self.client_id}: Decrypted sum = {result_value}")
         print(f"Client {self.client_id}: Winner = {result}")
     
+    def handle_zkp_challenge(self):
+        """Handle ZKP challenge from server"""
+        # Wait for potential ZKP challenge from server
+        try:
+            self.socket.settimeout(25.0)
+            data = self.socket.recv(4096).decode().strip()
+            if data:
+                msg = json.loads(data)
+                if msg['type'] == 'zkp_challenge':
+                    challenge = msg['challenge']
+                    print(f"Client {self.client_id}: Received ZKP challenge e={challenge}")
+                    self.respond_to_zkp_challenge(challenge)
+        except socket.timeout:
+            print(f"Client {self.client_id}: No ZKP challenge received")
+    
     def close(self):
         """Close connection"""
         self.socket.close()
@@ -152,12 +194,14 @@ def main():
         
         # Cast vote
         client.cast_vote(vote)
-        
+
         # If first client, wait for user input to get results
         if client.is_first_client:
             input("Press Enter to get results (after all clients have voted)...")
             client.get_results()
         
+        client.handle_zkp_challenge()
+
         client.close()
     else:
         print("Client: Failed to connect")

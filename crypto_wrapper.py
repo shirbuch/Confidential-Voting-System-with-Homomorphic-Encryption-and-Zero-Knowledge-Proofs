@@ -80,3 +80,19 @@ def calculate_encrypted_sum(encrypted_values: list, public_key: Tuple[int, int])
         encrypted_sum = (encrypted_sum * encrypted_values[i]) % (n * n)
     
     return encrypted_sum
+
+
+def generate_zkp_proof(m: int, r: int, public_key: Tuple[int, int], e: int) -> Tuple[int, int, int]:
+    """
+    Generate a zero-knowledge proof (u, v, w) for vote m encrypted with Paillier.
+    """
+    g, N = public_key
+    N2 = N * N
+    x = random.randint(1, N - 1)
+    s = random.randint(1, N - 1)
+    
+    u = (pow(g, x, N2) * pow(s, N, N2)) % N2
+    v = (x - e * m) % N
+    w = (s * pow(r, -e, N)) % N
+    
+    return u, v, w

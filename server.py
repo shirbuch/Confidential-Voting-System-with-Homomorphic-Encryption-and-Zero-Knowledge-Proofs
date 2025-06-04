@@ -29,6 +29,8 @@ class VotingServer:
         self.voting_active = True
         self.server_running = True
         self.results_requested = False
+        self.finished_zkp_validations = False
+        self.active_challenges = {}
         
         # Thread-safe shutdown event
         self.shutdown_event = threading.Event()
@@ -105,7 +107,7 @@ class VotingServer:
                     print(f"Server: Sent shared public key to {client_id}")
             
             # Handle voting
-            while not self.shutdown_event.is_set() and self.voting_active:
+            while not self.shutdown_event.is_set() and self.voting_active or not self.finished_zkp_validations:
                 try:
                     conn.settimeout(0.5)  # Short timeout to check shutdown frequently
                     data = conn.recv(4096).decode().strip()
@@ -123,10 +125,11 @@ class VotingServer:
                         response = {'type': 'vote_received'}
                         conn.send((json.dumps(response) + '\n').encode())
                     
+                    if not self.shared_public_key:
+                        return 0
+                    
                     elif msg['type'] == 'get_results':
                         # Calculate encrypted sum
-                        if not self.shared_public_key:
-                            return 0
                         encrypted_sum = calculate_encrypted_sum(self.encrypted_votes, self.shared_public_key)
                         print(f"Server: Calculated encrypted sum from {len(self.encrypted_votes)} votes: {encrypted_sum}")
                         response = {'type': 'encrypted_sum', 'encrypted_sum': encrypted_sum}
@@ -137,7 +140,37 @@ class VotingServer:
                         self.results_requested = True
                         self.voting_active = False
                         print("Server: Results requested - voting round complete")
-                        print("Server: Voting session ended. Press Ctrl+C to exit.")
+
+                        # Challenge the clients for ZKP after vote
+                        time.sleep(0.5)  # give client a moment to be ready to receive ZKP
+                        self.challenge_clients_for_zkp()
+
+                    elif msg['type'] == 'zkp_response':
+                        u = msg['u']
+                        v = msg['v']
+                        w = msg['w']
+                        challenge, c = self.active_challenges.pop(client_id, (None, None))
+                        if challenge is None or c is None:
+                            print(f"Server: No active ZKP challenge for {client_id}")
+                            return
+
+                        g, N = self.shared_public_key
+                        N2 = N * N
+                        lhs = (pow(g, v, N2) * pow(w, N, N2) * pow(c, challenge, N2)) % N2
+
+                        if lhs == u:
+                            print(f"Server: ZKP verification PASSED for client {client_id}")
+                        else:
+                            print(f"Server: ZKP verification FAILED for client {client_id}")
+                            self.finished_zkp_validations = True
+                            print("Server: Verifying session FAILED. Press Ctrl+C to exit.")
+                            return
+
+                        if not self.active_challenges:
+                            print("Server: All ZKP validations complete")
+                            self.finished_zkp_validations = True
+                            print("Server: Voting and verifying session ended. Press Ctrl+C to exit.")
+                            break
                         break
                         
                 except socket.timeout:
@@ -159,7 +192,33 @@ class VotingServer:
             if client_id and client_id in self.clients:
                 del self.clients[client_id]
                 print(f"Server: Client {client_id} disconnected")
-    
+
+    def challenge_client_for_zkp(self, client_id: str, conn: socket.socket):
+        if not self.shared_public_key:
+            print("Server: No shared public key available for ZKP challenge")
+            return
+        
+        challenge = random.randint(1, self.shared_public_key[1] - 1)
+        zkp_request = {
+            'type': 'zkp_challenge',
+            'challenge': challenge
+        }
+        conn.send((json.dumps(zkp_request) + '\n').encode())
+        self.active_challenges[client_id] = (challenge, self.encrypted_votes[-1])
+
+    def challenge_clients_for_zkp(self):
+        """Challenge all clients for zero-knowledge proofs"""
+        if not self.shared_public_key:
+            print("Server: No shared public key available for ZKP challenge")
+            return
+        if not self.encrypted_votes:
+            print("Server: No votes available for ZKP challenge")
+            return
+        print("Server: Challenging clients for zero-knowledge proofs")
+        for client_id, conn in self.clients.items():
+            self.challenge_client_for_zkp(client_id, conn)
+            print(f"Server: Challenged client {client_id} for ZKP")
+
     def calculate_encrypted_sum(self) -> int:
         """Calculate homomorphic sum of all encrypted votes"""
         if not self.encrypted_votes:
@@ -184,8 +243,8 @@ class VotingServer:
         try:
             while not self.shutdown_event.is_set():
                 # If voting is complete, auto-shutdown
-                if self.results_requested:
-                    print("Server: Voting complete. Auto-shutting down.")
+                if self.finished_zkp_validations:
+                    print("Server: Voting and verifying complete. Auto-shutting down.")
                     self.shutdown()
                     break           
         except KeyboardInterrupt:
