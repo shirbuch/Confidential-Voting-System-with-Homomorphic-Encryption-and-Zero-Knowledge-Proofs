@@ -1,0 +1,42 @@
+TODO:
+Take the following code and transform it into a client-server architecture where the client sends information to the server and the server responds appropriately. the simulator does not need to communicate and can run as the main code.  Use Python with sockets. Separate the secure_voting_system code into files based on the class and functionallity, e.g. one for the client, one for the server. try to keep the communication logic seperated from the functionallity of the client and server.
+
+===
+Promt to make this code
+===
+
+You are an expert Python developer with a strong background in secure voting systems, cryptography, and system architecture. you put importance to clean, readable and simple code, that is also modular and easy to change and fix. 
+Write Python code for a voting system based on the following design. Follow modern software design practices. The goal is to separate concerns properly between the simulator, client, and server.
+System Overview
+* Simulator:
+   * Hardcodes the votes as a list of (id, vote). A vote is YES=1, NO=-1. if needed because of zkp may have voter class and save additional cryptographical sigma context.
+   * Sends each vote in plaintext to the client (kiosk).
+* Client (Kiosk):
+   * Generates key pair, keeps the private key, and sends the public key to the server.
+   * Waits to receive the votes list.
+   * on each vote:
+      * Performs homomorphic encryption from crypto_wrapper encryption on the vote with the client's public key.
+      * Generates commitment on the plaintext vote as in the sigma protocol in the zkp-sigma file.
+   * Sends the list of tuples of the encrypted votes and the commitments to the server.
+   * Later, decrypts the final aggregated result from the server with the private key and sends it back to the server.
+* Server:
+   * First part:
+   * Receives the encrypted votes and commitments.
+   * Stores the mapping: voter ID → (encrypted vote, commitment).
+   * Performs homomorphic computation with public key sent from the client to produce an encrypted tally.
+   * Sends the tally back to the client for decryption.
+   * gets the results form the client and prints it.
+   * Second part:
+   * Requests proof of vote from simulator for all the voters as in sigma protocol, after having the commitment.
+   * Verifies each proof using the commitment and confirms no fraud.
+Implementation Notes
+* Use clear object-oriented design: define classes for Simulator, Client, Server.
+* Assume a working homomorphic encryption in crypto_wrapper, and ZKP in zkp-sigma file. do not print like there, just use the cryptographic logic. please save all cryptographic in the crypto_wrapper.
+* Maintain a clean separation between encryption logic and proof/commitment logic.
+* Simulate the flow from vote submission to final tally and verification.
+* Include one test case showing a normal flow and one showing a faulty/fraud case.
+* you may make rewrite crypto_wrapper to be better.
+* do not use magic of default numbers, but you may define them as in best practices.
+
+server should not know if there is a fraud but only after the zkp verification that should fail.  Simulating fraud should be in the simulator, not in the client/server. please update code accordingly and tell me where and what you changed.
+
