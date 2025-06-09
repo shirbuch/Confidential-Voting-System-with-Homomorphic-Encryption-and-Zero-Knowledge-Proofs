@@ -39,10 +39,12 @@ class VoterContext:
 class Simulator:
     """Simulator that generates votes and handles ZKP requests"""
     
-    def __init__(self, votes: List[Tuple[str, VoteValue]]):
+    def __init__(self, votes: List[Tuple[str, VoteValue]], fraudulent_voters: Optional[List[str]] = None):
         self.votes = [Vote(voter_id, vote) for voter_id, vote in votes]
         self.sigma = SigmaProtocol()
         self.voter_contexts: Dict[str, VoterContext] = {}
+        # Store which voters should provide fraudulent proofs
+        self.fraudulent_voters = set(fraudulent_voters or [])
         
     def get_votes(self) -> List[Vote]:
         """Return the list of votes"""
@@ -56,31 +58,28 @@ class Simulator:
         )
     
     def provide_proof(self, voter_id: str, challenge: SigmaChallenge) -> Optional[SigmaProof]:
-        """Provide ZKP proof for a specific voter"""
+        """Provide ZKP proof for a specific voter - may be fraudulent based on simulator setup"""
         if voter_id not in self.voter_contexts:
             return None
             
         context = self.voter_contexts[voter_id]
-        return self.sigma.create_proof(
-            context.commitment, 
-            challenge, 
-            context.vote.value
-        )
-    
-    def simulate_fraud(self, voter_id: str, challenge: SigmaChallenge) -> SigmaProof:
-        """Simulate fraudulent proof (wrong secret)"""
-        if voter_id not in self.voter_contexts:
-            # Return invalid proof
-            return SigmaProof(z=random.randint(1, 1000))
-            
-        context = self.voter_contexts[voter_id]
-        # Use wrong secret (opposite vote)
-        wrong_secret = VoteValue.YES.value if context.vote == VoteValue.NO else VoteValue.NO.value
-        return self.sigma.create_proof(
-            context.commitment,
-            challenge,
-            wrong_secret
-        )
+        
+        # Check if this voter should provide fraudulent proof
+        if voter_id in self.fraudulent_voters:
+            # Provide fraudulent proof using wrong secret
+            wrong_secret = VoteValue.YES.value if context.vote == VoteValue.NO else VoteValue.NO.value
+            return self.sigma.create_proof(
+                context.commitment,
+                challenge,
+                wrong_secret
+            )
+        else:
+            # Provide legitimate proof
+            return self.sigma.create_proof(
+                context.commitment, 
+                challenge, 
+                context.vote.value
+            )
 
 class Client:
     """Client (Kiosk) that handles encryption and decryption"""
@@ -170,7 +169,7 @@ class Server:
         else:
             print("Server: Tie vote")
             
-    def verify_all_proofs(self, simulator: Simulator, fraud_voter_id: Optional[str] = None) -> Dict[str, bool]:
+    def verify_all_proofs(self, simulator: Simulator) -> Dict[str, bool]:
         """Verify ZKP proofs for all voters"""
         verification_results = {}
         
@@ -181,12 +180,7 @@ class Server:
             challenge = self.sigma.generate_challenge()
             
             # Request proof from simulator
-            if fraud_voter_id == voter_id:
-                # Simulate fraud for this voter
-                proof = simulator.simulate_fraud(voter_id, challenge)
-                print(f"Server: Simulating fraud for voter {voter_id}")
-            else:
-                proof = simulator.provide_proof(voter_id, challenge)
+            proof = simulator.provide_proof(voter_id, challenge)
             
             if proof is None:
                 verification_results[voter_id] = False
@@ -204,14 +198,14 @@ class Server:
             
         return verification_results
 
-def run_voting_simulation(votes: List[Tuple[str, VoteValue]], fraud_voter_id: Optional[str] = None):
+def run_voting_simulation(votes: List[Tuple[str, VoteValue]], fraudulent_voters: Optional[List[str]] = None):
     """Run complete voting simulation"""
     print("=" * 60)
     print("SECURE VOTING SYSTEM SIMULATION")
     print("=" * 60)
     
     # Initialize components
-    simulator = Simulator(votes)
+    simulator = Simulator(votes, fraudulent_voters)
     client = Client()
     server = Server()
     
@@ -243,7 +237,7 @@ def run_voting_simulation(votes: List[Tuple[str, VoteValue]], fraud_voter_id: Op
     print("-" * 45)
     
     # Step 7: Server verifies all proofs
-    verification_results = server.verify_all_proofs(simulator, fraud_voter_id)
+    verification_results = server.verify_all_proofs(simulator)
     
     # Summary
     print(f"\nVerification Summary:")
@@ -252,8 +246,8 @@ def run_voting_simulation(votes: List[Tuple[str, VoteValue]], fraud_voter_id: Op
     total_proofs = len(verification_results)
     print(f"Valid proofs: {valid_proofs}/{total_proofs}")
     
-    if fraud_voter_id:
-        fraud_detected = not verification_results.get(fraud_voter_id, True)
+    if fraudulent_voters:
+        fraud_detected = any(not verification_results.get(voter_id, True) for voter_id in fraudulent_voters)
         print(f"Fraud detection: {'SUCCESS' if fraud_detected else 'FAILED'}")
     
     return verification_results
@@ -285,7 +279,7 @@ def test_fraud_detection():
         ("Eve", VoteValue.NO)
     ]
     
-    results = run_voting_simulation(votes, fraud_voter_id="Charlie")
+    results = run_voting_simulation(votes, fraudulent_voters=["Charlie"])
     assert not results["Charlie"], "Fraudulent proof should be detected"
     assert all(valid for voter_id, valid in results.items() if voter_id != "Charlie"), \
            "Other proofs should remain valid"

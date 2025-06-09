@@ -1,0 +1,156 @@
+# Secure Voting System
+
+A comprehensive implementation of a secure electronic voting system using homomorphic encryption and zero-knowledge proofs.
+
+## 🚀 Usage Examples
+
+### Basic Usage:
+from secure_voting_system import run_voting_simulation, VoteValue
+
+votes = [
+    ("Alice", VoteValue.YES),
+    ("Bob", VoteValue.NO),
+    ("Charlie", VoteValue.YES)
+]
+
+"""Normal election"""
+results = run_voting_simulation(votes)
+
+"""Election with fraud detection"""
+results = run_voting_simulation(votes, fraud_voter_id="Bob")
+
+### Running Tests:
+python voting_system_tests.py
+
+### Full Demo:
+python voting_system_demo.py
+
+## 🎯 Overview
+
+This system demonstrates a complete secure voting workflow that ensures:
+- **Vote Privacy**: Individual votes remain encrypted and private
+- **Vote Integrity**: Zero-knowledge proofs verify vote authenticity without revealing content
+- **Fraud Detection**: Cryptographic verification catches tampering attempts
+- **Secure Aggregation**: Final tallies computed without decrypting individual votes
+
+## 🏗️ Architecture
+
+1. **Simulator**: Generates votes and provides cryptographic proofs
+2. **Client (Kiosk)**: Handles encryption/decryption and commitment generation
+3. **Server**: Aggregates encrypted votes and verifies zero-knowledge proofs
+
+## 🔒 Cryptographic Components
+
+### Homomorphic Encryption (Paillier)
+- Enables computation on encrypted data
+- Allows vote tallying without decryption
+- Maintains individual vote privacy
+
+### Zero-Knowledge Proofs (Sigma Protocol)
+- Proves knowledge of vote without revealing it
+- Based on Schnorr identification protocol
+- Enables fraud detection and prevention
+
+## 📁 File Structure
+
+```
+secure_voting_system/
+├── crypto_wrapper_enhanced.py    # Enhanced cryptographic primitives
+├── secure_voting_system.py       # Main system implementation
+├── voting_system_demo.py         # Demo runner and test cases
+├── voting_config.py              # Configuration management
+└── README.md                     # This file
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.8+
+- No external dependencies (uses only standard library)
+
+### Running the Demo
+
+```bash
+# Run complete demonstration
+python voting_system_demo.py
+
+# Or import and use programmatically
+from secure_voting_system import run_voting_simulation, VoteValue
+
+votes = [
+    ("Alice", VoteValue.YES),
+    ("Bob", VoteValue.NO),
+    ("Charlie", VoteValue.YES)
+]
+
+results = run_voting_simulation(votes)
+```
+
+## 🧪 Test Cases
+
+### 1. Normal Flow Test
+- Demonstrates standard voting process
+- All proofs should verify successfully
+- Shows homomorphic tally computation
+
+### 2. Fraud Detection Test
+- Simulates fraudulent vote submission
+- Demonstrates zero-knowledge proof failure
+- Shows system's ability to detect tampering
+
+### 3. Custom Election Demo
+- Board voting scenario with 5 members
+- Real-world example usage
+
+### 4. Large Election Demo
+- Scales to 20 voters automatically
+- Demonstrates performance with larger datasets
+
+## 🔧 Configuration
+
+The system uses `voting_config.py` for all configurable parameters:
+
+- **Crypto Settings**: Prime ranges, key sizes, protocol parameters
+- **System Settings**: Voter limits, timeouts, logging levels
+- **Network Settings**: Ports and communication parameters (for future network implementation)
+
+## 🔐 Security Features
+
+### Vote Privacy
+- Individual votes never stored in plaintext
+- Homomorphic encryption preserves privacy during aggregation
+- Only final tally is revealed
+
+### Vote Integrity
+- Zero-knowledge proofs verify each vote's authenticity
+- Sigma protocol ensures voters know their secret
+- Cryptographic commitments prevent vote changing
+
+### Fraud Prevention
+- Server verifies all proofs before accepting results
+- Invalid proofs are detected and rejected
+- System maintains audit trail of all verifications
+
+
+## 🔬 Technical Details
+
+### Paillier Cryptosystem
+- **Key Generation**: Uses random primes p, q to compute n = p×q
+- **Encryption**: E(m) = g^m × r^n (mod n²)
+- **Homomorphic Property**: E(m₁) × E(m₂) = E(m₁ + m₂)
+
+### Sigma Protocol
+- **Commitment**: a = g^r (mod p)
+- **Challenge**: c ∈ᴿ Zₚ
+- **Response**: z = r + c×w
+- **Verification**: g^z ≟ a × k^c (mod p)
+
+## 🚧 Limitations & Future Work
+
+### Current Limitations
+- Simulated network communication
+
+
+## 📚 References
+- [Paillier Cryptosystem](https://github.com/0riv3r/confidential_computing_class/blob/main/notebooks/he_paillier_python.ipynb)
+- [Sigma (Schnorr) Identification Protocol](https://github.com/0riv3r/confidential_computing_class/blob/main/notebooks/zkp-sigma.ipynb)

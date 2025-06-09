@@ -59,7 +59,7 @@ def demo_large_election():
     no_count = len(votes) - yes_count
     
     print(f"\nExpected tally: {yes_count} YES, {no_count} NO")
-    print(f"Expected result: {yes_count - no_count} (positive = YES majority)")
+    print(f"Expected result: {yes_count - no_count} (positive = YES , negative = NO)")
     
     results = run_voting_simulation(votes)
     return results
