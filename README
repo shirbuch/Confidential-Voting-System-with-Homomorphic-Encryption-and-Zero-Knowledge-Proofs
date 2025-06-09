@@ -5,6 +5,11 @@ A comprehensive implementation of a secure electronic voting system using homomo
 ## 🚀 Usage Examples
 
 ### Basic Usage:
+```bash
+# Run complete demonstration
+python voting_system_demo.py
+
+# Or import and use programmatically
 from secure_voting_system import run_voting_simulation, VoteValue
 
 votes = [
@@ -13,17 +18,23 @@ votes = [
     ("Charlie", VoteValue.YES)
 ]
 
+
 """Normal election"""
 results = run_voting_simulation(votes)
 
 """Election with fraud detection"""
-results = run_voting_simulation(votes, fraud_voter_id="Bob")
+results = run_voting_simulation(votes, fraudulent_voters=["Bob"])
+```
 
 ### Running Tests:
+```bash
 python voting_system_tests.py
+```
 
+```bash
 ### Full Demo:
 python voting_system_demo.py
+```
 
 ## 🎯 Overview
 
@@ -50,41 +61,6 @@ This system demonstrates a complete secure voting workflow that ensures:
 - Proves knowledge of vote without revealing it
 - Based on Schnorr identification protocol
 - Enables fraud detection and prevention
-
-## 📁 File Structure
-
-```
-secure_voting_system/
-├── crypto_wrapper_enhanced.py    # Enhanced cryptographic primitives
-├── secure_voting_system.py       # Main system implementation
-├── voting_system_demo.py         # Demo runner and test cases
-├── voting_config.py              # Configuration management
-└── README.md                     # This file
-```
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.8+
-- No external dependencies (uses only standard library)
-
-### Running the Demo
-
-```bash
-# Run complete demonstration
-python voting_system_demo.py
-
-# Or import and use programmatically
-from secure_voting_system import run_voting_simulation, VoteValue
-
-votes = [
-    ("Alice", VoteValue.YES),
-    ("Bob", VoteValue.NO),
-    ("Charlie", VoteValue.YES)
-]
-
-results = run_voting_simulation(votes)
-```
 
 ## 🧪 Test Cases
 

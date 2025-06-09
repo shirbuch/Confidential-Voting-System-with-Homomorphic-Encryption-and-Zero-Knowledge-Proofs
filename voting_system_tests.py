@@ -112,6 +112,12 @@ class TestVotingComponents(unittest.TestCase):
         self.assertEqual(votes[0].voter_id, "Alice")
         self.assertEqual(votes[0].vote, VoteValue.YES)
         
+    def test_simulator_fraud_initialization(self):
+        """Test simulator initialization with fraudulent voters"""
+        simulator = Simulator(self.votes, fraudulent_voters=["Bob"])
+        self.assertIn("Bob", simulator.fraudulent_voters)
+        self.assertNotIn("Alice", simulator.fraudulent_voters)
+        
     def test_client_key_generation(self):
         """Test client key pair generation"""
         public_key = self.client.get_public_key()
@@ -209,7 +215,7 @@ class TestSecurityScenarios(unittest.TestCase):
             ("Honest2", VoteValue.YES)
         ]
         
-        results = run_voting_simulation(votes, fraud_voter_id="Fraudster")
+        results = run_voting_simulation(votes, fraudulent_voters=["Fraudster"])
         
         # Fraudster should be detected
         self.assertFalse(results["Fraudster"])
@@ -217,13 +223,33 @@ class TestSecurityScenarios(unittest.TestCase):
         self.assertTrue(results["Honest1"])
         self.assertTrue(results["Honest2"])
         
-    def test_fraud_detection_multiple_scenarios(self):
-        """Test fraud detection across multiple voters"""
+    def test_fraud_detection_multiple_voters(self):
+        """Test fraud detection for multiple fraudulent voters"""
+        votes = [
+            ("Honest1", VoteValue.YES),
+            ("Fraudster1", VoteValue.NO),
+            ("Honest2", VoteValue.YES),
+            ("Fraudster2", VoteValue.NO),
+            ("Honest3", VoteValue.YES)
+        ]
+        
+        results = run_voting_simulation(votes, fraudulent_voters=["Fraudster1", "Fraudster2"])
+        
+        # Fraudsters should be detected
+        self.assertFalse(results["Fraudster1"])
+        self.assertFalse(results["Fraudster2"])
+        # Honest voters should pass
+        self.assertTrue(results["Honest1"])
+        self.assertTrue(results["Honest2"])
+        self.assertTrue(results["Honest3"])
+        
+    def test_fraud_detection_scenarios(self):
+        """Test fraud detection across different voter scenarios"""
         votes = [("V1", VoteValue.YES), ("V2", VoteValue.NO), ("V3", VoteValue.YES)]
         
-        # Test fraud detection for each voter
+        # Test fraud detection for each voter individually
         for fraud_id in ["V1", "V2", "V3"]:
-            results = run_voting_simulation(votes, fraud_voter_id=fraud_id)
+            results = run_voting_simulation(votes, fraudulent_voters=[fraud_id])
             self.assertFalse(results[fraud_id], f"Failed to detect fraud for {fraud_id}")
             
             # Other voters should still be valid
@@ -246,6 +272,32 @@ class TestSecurityScenarios(unittest.TestCase):
             original_vote = next(v for v in votes if v.voter_id == encrypted_vote.voter_id)
             self.assertNotEqual(encrypted_vote.encrypted_vote, original_vote.vote.value)
             self.assertNotEqual(encrypted_vote.encrypted_vote, abs(original_vote.vote.value))
+            
+    def test_honest_vs_fraudulent_proof_generation(self):
+        """Test that honest and fraudulent proofs are generated differently"""
+        votes = [("Honest", VoteValue.YES), ("Fraudster", VoteValue.NO)]
+        
+        # Create two simulators - one honest, one with fraud
+        honest_simulator = Simulator(votes)
+        fraud_simulator = Simulator(votes, fraudulent_voters=["Fraudster"])
+        
+        # Both should have the same voter contexts after processing
+        client = Client()
+        client.process_votes(honest_simulator.get_votes(), honest_simulator)
+        client.process_votes(fraud_simulator.get_votes(), fraud_simulator)
+        
+        # Generate proofs for the same challenge
+        from crypto_wrapper_enhanced import SigmaProtocol
+        sigma = SigmaProtocol()
+        challenge = sigma.generate_challenge()
+        
+        honest_proof = honest_simulator.provide_proof("Fraudster", challenge)
+        fraud_proof = fraud_simulator.provide_proof("Fraudster", challenge)
+        
+        # Proofs should be different (fraudulent one should fail verification)
+        if not honest_proof or not fraud_proof:
+            self.fail("Proof generation failed for one of the simulators")
+        self.assertNotEqual(honest_proof.z, fraud_proof.z)
 
 class TestConfiguration(unittest.TestCase):
     """Test configuration management"""
@@ -311,6 +363,20 @@ class TestErrorHandling(unittest.TestCase):
         except Exception:
             # If exception occurs, it should be a controlled error
             pass
+            
+    def test_fraudulent_voter_not_in_votes(self):
+        """Test specifying fraudulent voter that doesn't exist"""
+        votes = [("Alice", VoteValue.YES), ("Bob", VoteValue.NO)]
+        
+        # This should not crash, but the fraudulent voter simply won't be tested
+        try:
+            results = run_voting_simulation(votes, fraudulent_voters=["Charlie"])
+            # Should still get results for existing voters
+            self.assertIn("Alice", results)
+            self.assertIn("Bob", results)
+            self.assertNotIn("Charlie", results)
+        except Exception as e:
+            self.fail(f"Non-existent fraudulent voter caused exception: {e}")
 
 def run_all_tests():
     """Run all test suites"""

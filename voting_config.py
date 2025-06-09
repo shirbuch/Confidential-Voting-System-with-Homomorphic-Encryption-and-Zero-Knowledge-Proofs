@@ -23,7 +23,6 @@ class CryptoConfig:
     
     # Security levels
     MIN_KEY_SIZE_BITS: int = 512
-    RANDOM_SEED: int = None  # None for true randomness
 
 @dataclass
 class SystemConfig:
